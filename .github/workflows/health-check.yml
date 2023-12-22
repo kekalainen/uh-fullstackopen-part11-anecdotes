@@ -1,8 +1,8 @@
-name: Scheduled health check
+name: Health check
 
 on:
-  schedule:
-    - cron: '11 * * * *'
+  push:
+    branches: [main]
 
 jobs:
   ping:
