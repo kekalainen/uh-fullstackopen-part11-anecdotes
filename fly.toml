@@ -1,0 +1,48 @@
+app = "uh-fullstackopen-part11-anecdotes"
+primary_region = "arn"
+
+[build]
+
+[deploy]
+  strategy = "canary"
+  wait_timeout = "2m"
+
+[processes]
+  app = "npm run server"
+
+[[services]]
+  processes=["app"]
+  internal_port = 3000
+  protocol = "tcp"
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.http_checks]]
+    grace_period = "5s"
+    interval = "15s"
+    method = "get"
+    path = "/healthz"
+    protocol = "http"
+    timeout = "2s"
+    tls_skip_verify = false
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
