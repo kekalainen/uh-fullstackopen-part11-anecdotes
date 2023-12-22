@@ -1,0 +1,70 @@
+name: Build, test & deploy
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+  push:
+    branches: [main]
+
+jobs:
+  build_test_deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+      - name: Install dependencies 
+        run: npm ci  
+      - name: Check style
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Test (Jest)
+        run: npm run test
+      - name: Test (Cypress)
+        uses: cypress-io/github-action@v5
+        with:
+          command: npm run test:e2e
+          start: npm run server
+          wait-on: http://localhost:3000
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy (Fly.io)
+        id: deploy
+        if: >-
+          ${{ github.event_name == 'push' &&
+              !contains(join(github.event.commits.*.message, ' '), '#skip') }}
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Discord webhook (deploy)
+        if: ${{ steps.deploy.outcome == 'success' }}
+        uses: rjstone/discord-webhook-notify@89b0bf43c2c8514f70d0dcba4a706b904e8a3112
+        with:
+            description: Commit [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) built and [deployed](${{ vars.DEPLOYMENT_URL }})!
+            footer: Triggered by ${{ github.triggering_actor }}
+            severity: info
+            webhookUrl: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      - name: Discord webhook (failure)
+        uses: rjstone/discord-webhook-notify@89b0bf43c2c8514f70d0dcba4a706b904e8a3112
+        if: ${{ failure() }}
+        with:
+            description: Pipeline failed for commit [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
+            footer: Triggered by ${{ github.triggering_actor }}
+            severity: error
+            webhookUrl: ${{ secrets.DISCORD_WEBHOOK_URL }}
+  tag_release:
+    needs: [build_test_deploy]
+    if: >-
+      ${{ github.event_name == 'push' &&
+          !contains(join(github.event.commits.*.message, ' '), '#skip')}}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Bump version number and push tag
+        uses: anothrNick/github-tag-action@a2c70ae13a881faf2b4953baaa9e49731997ab36
+        env:
+          DEFAULT_BUMP: patch
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
